@@ -1,0 +1,13 @@
+----------------------------------------------------------------
+Sun Jul 26 15:31:20 CST 2020:
+Booting Derby version The Apache Software Foundation - Apache Derby - 10.10.2.0 - (1582446): instance a816c00e-0173-8a08-8081-00000bfbc408 
+on database directory D:\IDEA-Project\tsetSQL\metastore_db with class loader sun.misc.Launcher$AppClassLoader@18b4aac2 
+Loaded from file:/D:/apache-maven-3.6.3/repo/org/apache/derby/derby/10.10.2.0/derby-10.10.2.0.jar
+java.vendor=Oracle Corporation
+java.runtime.version=1.8.0_191-b12
+user.dir=D:\IDEA-Project\tsetSQL
+os.name=Windows 10
+os.arch=amd64
+os.version=10.0
+derby.system.home=null
+Database Class Loader started - derby.database.classpath=''
