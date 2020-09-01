@@ -1,4 +1,4 @@
-package com.xishanju.testSQL.util;
+package com.wanrennahan.testSQL.util;
 
 import org.apache.hadoop.hive.ql.parse.ASTNode;
 import org.apache.hadoop.hive.ql.parse.ParseDriver;
@@ -10,7 +10,7 @@ import java.io.FileReader;
 import java.io.IOException;
 
 /**
- * @description:
+ * @description: 文件处理工具类
  * @author: 冯雨南
  * @createDate: 2020/7/23
  * @version: 1.0.0

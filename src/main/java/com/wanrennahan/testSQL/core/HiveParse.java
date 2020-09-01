@@ -1,47 +1,49 @@
-package com.xishanju.testSQL.util;
+package com.wanrennahan.testSQL.core;
 
-
-//import parse.CustomizeParserDriver;
-
-import org.apache.hadoop.hive.ql.parse.*;
+import org.apache.hadoop.hive.ql.parse.ASTNode;
+import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer;
+import org.apache.hadoop.hive.ql.parse.HiveParser;
 
 import java.util.*;
 
 import static org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer.getUnescapedName;
 
 /**
- * 目的：获取AST中的表，列，以及对其所做的操作，如SELECT,INSERT
- * 重点：获取SELECT操作中的表和列的相关操作。其他操作这判断到表级别。
- * 实现思路：对AST深度优先遍历，遇到操作的token则判断当前的操作，
- * 遇到TOK_TAB或TOK_TABREF则判断出当前操作的表，遇到子句则压栈当前处理，处理子句。
- * 子句处理完，栈弹出。
- */
-public class Demo02 {
+ * @description: sql解析类
+ * @param: null
+ * @return:
+ * @author: YuNan.Feng
+ * @date: 2020/8/514:26
+ * @version: 1.0.0
+ **/
+public class HiveParse {
 
+    //默认数据库名
+    private static final String DEFAULT_DATABASES = "DEFAULT";
     private static final String UNKNOWN = "UNKNOWN";
     private Map<String, String> alias = new HashMap<String, String>();
     private Map<String, String> cols = new TreeMap<String, String>();
     private Map<String, String> colAlais = new TreeMap<String, String>();
-
-    private Stack<String> colAlaisStack = new Stack<>();
+    //最外层列
+    private List<String> list = new ArrayList<>();
 
     private Set<String> tables = new HashSet<String>();
     private Stack<String> tableNameStack = new Stack<String>();
     private Stack<Oper> operStack = new Stack<Oper>();
-    private String nowQueryTable = "";//定义及处理不清晰，修改为query或from节点对应的table集合或许好点。目前正在查询处理的表可能不止一个。
+    //当前处理表
+    private String nowQueryTable = "";
     private Oper oper;
     private boolean joinClause = false;
-    private boolean insertClause = false;
     private static boolean isIn = false;
+    private boolean insertClause = false;
 
-    private static final String DEFAULT_DATABASES = "DEFAULT";
 
     private enum Oper {
         SELECT, INSERT, DROP, TRUNCATE, LOAD, CREATETABLE, ALTER, INSERT_INTO
     }
 
     public Set<String> parseIteral(ASTNode ast) {
-        Set<String> set = new HashSet<String>();//当前查询所对应到的表集合
+        Set<String> set = new HashSet<String>();
         prepareToParseCurrentNodeAndChilds(ast);
         set.addAll(parseChildNodes(ast));
         set.addAll(parseCurrentNode(ast, set));
@@ -51,7 +53,7 @@ public class Demo02 {
 
     private void endParseCurrentNode(ASTNode ast) {
         if (ast.getToken() != null) {
-            switch (ast.getToken().getType()) {//join 从句结束，跳出join
+            switch (ast.getToken().getType()) {
                 case HiveParser.TOK_RIGHTOUTERJOIN:
                 case HiveParser.TOK_LEFTOUTERJOIN:
                 case HiveParser.TOK_JOIN:
@@ -76,13 +78,6 @@ public class Demo02 {
                     nowQueryTable = tableNameStack.pop();
                     oper = operStack.pop();
                     break;
-
-//                   nowQueryTable = tableNameStack.pop();
-//                   oper = operStack.pop();
-
-
-                //     case HiveParser.TOK_WHERE:
-
             }
         }
     }
@@ -91,71 +86,72 @@ public class Demo02 {
         if (ast.getToken() != null) {
             switch (ast.getToken().getType()) {
                 case HiveParser.TOK_TABLE_PARTITION:
-                    //   case HiveParser.TOK_TABNAME:
                     if (ast.getChildCount() != 2) {
                         String table = getUnescapedName((ASTNode) ast.getChild(0));
                         if (oper == Oper.SELECT) {
                             nowQueryTable = table;
                         }
-
                         if (table.split("\\.").length != 2) {
                             table = DEFAULT_DATABASES + "." + table;
                         }
-
                         tables.add(table + "\t" + oper);
                     }
                     break;
 
-                case HiveParser.TOK_TAB:// outputTable
+                case HiveParser.TOK_TAB:
                     String tableTab = getUnescapedName((ASTNode) ast.getChild(0));
-                    if (oper == Oper.SELECT) {
+                    if (oper == Oper.SELECT /*|| oper == Oper.INSERT*/) {
                         nowQueryTable = tableTab;
                     }
-
-
                     if (tableTab.split("\\.").length != 2) {
                         tableTab = DEFAULT_DATABASES + "." + tableTab;
                     }
-
                     tables.add(tableTab + "\t" + oper);
                     break;
-                case HiveParser.TOK_TABREF:// inputTable
+                case HiveParser.TOK_TABREF:
                     ASTNode tabTree = (ASTNode) ast.getChild(0);
                     String tableName = (tabTree.getChildCount() == 1) ? getUnescapedName((ASTNode) tabTree.getChild(0))
                             : getUnescapedName((ASTNode) tabTree.getChild(0))
                             + "." + tabTree.getChild(1);
                     if (oper == Oper.SELECT) {
                         if (joinClause && !"".equals(nowQueryTable)) {
-                            nowQueryTable += "&" + "";//
+                            nowQueryTable += "&" + "";
                         } else {
                             nowQueryTable = tableName;
                         }
                         set.add(tableName);
                     }
-
                     if (tableName.split("\\.").length != 2) {
                         tableName = DEFAULT_DATABASES + "." + tableName;
                     }
-
                     tables.add(tableName + "\t" + oper);
                     if (ast.getChild(1) != null) {
                         String alia = ast.getChild(1).getText().toLowerCase();
-                        alias.put(alia, tableName);//sql6 p别名在tabref只对应为一个表的别名。
+                        alias.put(alia, tableName);
                     }
                     break;
                 case HiveParser.TOK_TABLE_OR_COL:
-
                     if (ast.getParent().getType() != HiveParser.DOT) {
                         String col = ast.getChild(0).getText().toLowerCase();
-                        if (alias.get(col) == null && colAlais.get(nowQueryTable + "." + col) == null) {
-                            if (nowQueryTable.indexOf("&") > 0) {//sql23
+                        if (alias.get(col) == null
+                                && colAlais.get(nowQueryTable + "." + col) == null) {
+                            if (nowQueryTable.indexOf("&") > 0) {
                                 cols.put(UNKNOWN + "." + col, insertClause == false ? "" : "insertTab");
+                                if (insertClause) {
+                                    if (!list.contains(UNKNOWN + "." + col)) {
+                                        list.add(UNKNOWN + "." + col);
+                                    }
+                                }
                             } else {
                                 cols.put(nowQueryTable + "." + col, insertClause == false ? "" : "insertTab");
+                                if (insertClause) {
+                                    if (!list.contains(nowQueryTable + "." + col)) {
+                                        list.add(nowQueryTable + "." + col);
+                                    }
+                                }
                             }
                         }
                     }
-
                     break;
                 case HiveParser.TOK_ALLCOLREF:
                     if (ast.getChild(0) != null) {
@@ -163,13 +159,31 @@ public class Demo02 {
                             String bieming = ast.getChild(0).getChild(0).toString();
                             //根据别名获取表名
                             String s = alias.get(bieming);
-                            cols.put(s + ".*", insertClause == false ? "" : "insertTab");
+                            cols.put(s + ".*1", insertClause == false ? "" : "insertTab");
+                            if (insertClause) {
+                                if (!list.contains(s + ".*1")) {
+                                    list.add(s + ".*1");
+                                }
+
+                            }
                         } else {
                             cols.put(nowQueryTable + ".*", insertClause == false ? "" : "insertTab");
+                            if (insertClause) {
+                                if (!list.contains(nowQueryTable + ".*")) {
+                                    list.add(nowQueryTable + ".*");
+                                }
+
+                            }
                         }
+                    } else {
+                        cols.put(nowQueryTable + ".*", insertClause == false ? "" : "insertTab");
+                        if (insertClause) {
+                            if (!list.contains(nowQueryTable + ".*")) {
+                                list.add(nowQueryTable + ".*");
+                            }
 
+                        }
                     }
-
                     break;
                 case HiveParser.TOK_SUBQUERY:
                     if (ast.getChildCount() == 2) {
@@ -182,30 +196,35 @@ public class Demo02 {
                         if (aliaReal.length() != 0) {
                             aliaReal = aliaReal.substring(0, aliaReal.length() - 1);
                         }
-//                    alias.put(tableAlias, nowQueryTable);//sql22
-                        alias.put(tableAlias, aliaReal);//sql6
-//                    alias.put(tableAlias, "");// just store alias
+                        alias.put(tableAlias, aliaReal);
                     }
                     break;
-
                 case HiveParser.TOK_SELEXPR:
                     if (ast.getChild(0).getType() == HiveParser.TOK_TABLE_OR_COL) {
                         String column = ast.getChild(0).getChild(0).getText()
                                 .toLowerCase();
                         if (nowQueryTable.indexOf("&") > 0) {
-                            cols.put(UNKNOWN + "." + column, insertClause == false ? "" : "insertTab");
+                            cols.put(UNKNOWN + "." + column, "");
+                            if (insertClause) {
+                                if (!list.contains(UNKNOWN + "." + column)) {
+                                    list.add(UNKNOWN + "." + column);
+                                }
+                            }
                         } else if (colAlais.get(nowQueryTable + "." + column) == null) {
                             cols.put(nowQueryTable + "." + column, insertClause == false ? "" : "insertTab");
+                            if (insertClause) {
+                                if (!list.contains(nowQueryTable + "." + column)) {
+                                    list.add(nowQueryTable + "." + column);
+                                }
+
+                            }
                         }
-                    } else if (ast.getChild(1) != null) {// TOK_SELEXPR (+
-                        // (TOK_TABLE_OR_COL id)
-                        // 1) dd
+                    } else if (ast.getChild(1) != null) {
                         String columnAlia = ast.getChild(1).getText().toLowerCase();
-                        colAlais.put(nowQueryTable + "." + columnAlia, "");
+                        colAlais.put(nowQueryTable + "." + columnAlia, insertClause == false ? "" : "insertTab");
+
                     }
                     break;
-
-
                 case HiveParser.DOT:
                     if (ast.getType() == HiveParser.DOT) {
                         if (ast.getChildCount() == 2) {
@@ -234,15 +253,18 @@ public class Demo02 {
                                     //   realTable = nowQueryTable;
                                 }
                                 cols.put(realTable + "." + column, insertClause == false ? "" : "insertTab");
+                                if (insertClause) {
+                                    if (!list.contains(realTable + "." + column)) {
+                                        list.add(realTable + "." + column);
+                                    }
 
+                                }
                             }
                         }
                     }
                     break;
-
                 case HiveParser.TOK_ALTERTABLE:
                     ASTNode alterTableName = (ASTNode) ast.getChild(0).getChild(0);
-
                     String tName = alterTableName.getText();
 
                     if (tName.split("\\.").length != 2) {
@@ -250,17 +272,6 @@ public class Demo02 {
                     }
                     tables.add(tName + "\t" + oper);
                     break;
-
-                case HiveParser.TOK_ALTERTABLE_ADDPARTS:
-
-
-                case HiveParser.TOK_ALTERTABLE_RENAME:
-                case HiveParser.TOK_ALTERTABLE_ADDCOLS:
-//                    ASTNode alterTableName = (ASTNode) ast.getChild(0).getChild(0);
-//
-//
-//                    tables.add(alterTableName.getText() + "\t" + oper);
-//                   break;
             }
         }
         return set;
@@ -269,13 +280,14 @@ public class Demo02 {
     private Set<String> parseChildNodes(ASTNode ast) {
         Set<String> set = new HashSet<String>();
         int numCh = ast.getChildCount();
+
         if (numCh > 0) {
             for (int num = 0; num < numCh; num++) {
                 ASTNode child = (ASTNode) ast.getChild(num);
-//                set.addAll(parseIteral(child));
-                if(child.getToken() != null && child.getToken().getType() != HiveParser.TOK_WHERE){
+                //去除where的条件列
+                if (child.getToken() != null && child.getToken().getType() != HiveParser.TOK_WHERE) {
                     set.addAll(parseIteral(child));
-                }else {
+                } else {
                     continue;
                 }
             }
@@ -284,9 +296,8 @@ public class Demo02 {
     }
 
     private void prepareToParseCurrentNodeAndChilds(ASTNode ast) {
-//        System.out.println(ast.toStringTree());
         if (ast.getToken() != null) {
-            switch (ast.getToken().getType()) {//join 从句开始
+            switch (ast.getToken().getType()) {
                 case HiveParser.TOK_RIGHTOUTERJOIN:
                 case HiveParser.TOK_LEFTOUTERJOIN:
                 case HiveParser.TOK_JOIN:
@@ -295,7 +306,7 @@ public class Demo02 {
                 case HiveParser.TOK_QUERY:
                     tableNameStack.push(nowQueryTable);
                     operStack.push(oper);
-                    nowQueryTable = "";//sql22
+                    nowQueryTable = "";
                     oper = Oper.SELECT;
                     break;
                 case HiveParser.TOK_INSERT_INTO:
@@ -307,8 +318,7 @@ public class Demo02 {
                     tableNameStack.push(nowQueryTable);
                     operStack.push(oper);
                     oper = Oper.INSERT;
-                    if(ast.getChild(0).getChild(0).getText() != "TOK_DIR"){
-//                        System.out.println(ast.getChild(0).getChild(0).getText());
+                    if (!ast.getChild(0).getChild(0).getText().equals("TOK_DIR")) {
                         insertClause = true;
                     }
                     break;
@@ -317,6 +327,11 @@ public class Demo02 {
                     operStack.push(oper);
                     oper = Oper.SELECT;
                     break;
+
+//                case HiveParser.TOK_TAB:
+//                    tableNameStack.push(nowQueryTable);
+//                    break;
+
                 case HiveParser.TOK_SUBQUERY_OP:
                     isIn = true;
                     break;
@@ -351,25 +366,8 @@ public class Demo02 {
         return val;
     }
 
-    private void output(Map<String, String> map) {
-        Iterator<String> it = map.keySet().iterator();
-        while (it.hasNext()) {
-            String key = it.next();
-            System.out.println(key + "\t" + map.get(key));
-        }
-    }
-
     public void parsehive(ASTNode ast) {
         parseIteral(ast);
-//        System.out.println("***************表***************");
-//        for (String table : tables) {
-//
-//            System.out.println(table);
-//        }
-//        System.out.println("***************列***************");
-//        output(cols);
-//        System.out.println("***************别名***************");
-//        output(alias);
     }
 
     public Set<String> getTables() {
@@ -380,48 +378,7 @@ public class Demo02 {
         return cols;
     }
 
-    public static void main(String[] args) throws ParseException {
-        Demo02 demo01 = new Demo02();
-
-        String sql2 = "INSERT OVERWRITE TABLE tmp_jxsj_questionnaire_1\n" +
-                "select t2.* \tfrom tmp_jxsj_questionnaire_1  t2,\n" +
-                "\t(\n" +
-                "\t  select t1.account_id , sum(t1.recharge_money) AS sum_rechage_money\n" +
-                "\t\tfrom dw.dw_app t1\n" +
-                "\t  where t1.dt >= '2016-09-20'\n" +
-                "\t  and t1.dt <= '2016-11-02'\n" +
-                "\t  and t1.app_id='16873'\n" +
-                "\t  and t1.msgtype = 'role.recharge' \t \n" +
-                "\t  group by t1.account_id\n" +
-                "\t) t3\n" +
-                "\twhere t3.account_id = t2.account_id";
-        ParseDriver parseDriver = new ParseDriver();
-        //  OverrideParserDriver parseDriver = new OverrideParserDriver();
-        ASTNode tree = null;
-        try {
-            tree = parseDriver.parse(sql2);
-        } catch (ParseException e) {
-            System.out.println("方法1失败");
-//            CustomizeParserDriver parseDriver1 = new CustomizeParserDriver();
-//            tree = parseDriver1.parse(sql2);
-        }
-
-        demo01.parsehive(tree);
-        Set<String> tables = demo01.getTables();
-        for (String table : tables) {
-            System.out.println(table);
-        }
-        System.out.println();
-        for (String s : demo01.getCols().keySet()) {
-            System.out.println(s + "  >>  " + demo01.getCols().get(s));
-        }
-
-
-      //  System.out.println(sql2);
-
-
-        System.out.println(tree.toStringTree());
-
-
+    public List<String> getList() {
+        return list;
     }
 }

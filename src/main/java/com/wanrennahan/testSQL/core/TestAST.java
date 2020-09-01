@@ -1,4 +1,4 @@
-package com.xishanju.testSQL.fildname;
+package com.wanrennahan.testSQL.core;
 
 import org.apache.hadoop.hive.ql.parse.*;
 

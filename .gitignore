@@ -1,0 +1,17 @@
+*.class
+
+# Package Files #
+*.jar
+*.pdb
+*.war
+*.ear
+*/.svn/*
+.svn
+.classpath
+.project
+.settings
+target
+*.iml
+.idea
+.idea/*
+/web-frontend/src/views/job/addJob.vue
