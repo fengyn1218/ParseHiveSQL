@@ -14,4 +14,4 @@ target
 *.iml
 .idea
 .idea/*
-/web-frontend/src/views/job/addJob.vue
+
